@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  dremio:
+    image: dremio/dremio-oss:latest
+    container_name: dremio
+    ports:
+      - 9047:9047
+      - 31010:31010
+      - 32010:32010
+      - 45678:45678
+    environment:
+      - DREMIO_JAVA_SERVER_EXTRA_OPTS=-Dpaths.dist=file:///opt/dremio/data/dist
+    depends_on:
+      - minio
+      - nessie
+      - sqlserver
+      - mysql
+    networks:
+      sql-mysql-dremio:
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=password
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    entrypoint: >
+      /bin/sh -c "
+      minio server /data --console-address ':9001' &
+      sleep 5;
+      mc alias set myminio http://localhost:9000 admin password;
+      mc mb myminio/datalake;
+      mc mb myminio/datalakehouse;
+      tail -f /dev/null
+      "
+    networks:
+      sql-mysql-dremio:
+
+  nessie:
+    image: projectnessie/nessie
+    container_name: nessie
+    environment:
+      - QUARKUS_PROFILE=sqlserver
+      - QUARKUS_DATASOURCE_JDBC_URL=jdbc:sqlserver://sqlserver:1433;databaseName=nessie
+      - QUARKUS_DATASOURCE_USERNAME=SA
+      - QUARKUS_DATASOURCE_PASSWORD=YourStrong!Passw0rd
+    ports:
+      - "19120:19120"
+    depends_on:
+      - sqlserver
+    networks:
+      sql-mysql-dremio:
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    container_name: sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "YourStrong!Passw0rd"
+    ports:
+      - "1433:1433"
+    volumes:
+      - ./seed/sqlserver:/var/opt/mssql/seed  # Seed data directory
+    networks:
+      sql-mysql-dremio:
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: mydatabase
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./seed/mysql:/docker-entrypoint-initdb.d/  # Seed data directory
+    networks:
+      sql-mysql-dremio:
+
+networks:
+  sql-mysql-dremio:
