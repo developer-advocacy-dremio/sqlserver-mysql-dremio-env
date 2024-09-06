@@ -73,6 +73,11 @@ services:
       - ./seed/sqlserver:/var/opt/mssql/seed  # Seed data directory
     networks:
       sql-mysql-dremio:
+    command: >
+      /bin/bash -c "
+      /opt/mssql/bin/sqlservr & sleep 30 && 
+      /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P 'YourStrong!Passw0rd' -i /var/opt/mssql/seed/init.sql
+      "
 
   mysql:
     image: mysql:8.0
@@ -83,7 +88,7 @@ services:
       MYSQL_USER: user
       MYSQL_PASSWORD: password
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - ./seed/mysql:/docker-entrypoint-initdb.d/  # Seed data directory
     networks:
